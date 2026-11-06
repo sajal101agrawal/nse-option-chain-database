@@ -141,19 +141,26 @@ daily ETL automatically calculates the new fields and does not need the backfill
 
 ## GitHub Actions Deploy
 
-The workflow is `.github/workflows/deploy-ec2.yml`. Required repository secrets:
+The workflow is `.github/workflows/deploy-ec2.yml`. It runs on each push to `main` and on manual
+dispatch. Required repository secrets:
 
 - `EC2_HOST`
 - `EC2_USER`
 - `EC2_SSH_KEY`
 
-Optional repository secrets:
+The workflow does these steps:
 
-- `EC2_PORT`, defaults to `22`
-- `EC2_APP_DIR`, defaults to `/opt/pov-db`
+1. The `Test` job runs `pytest -q`.
+2. The `Deploy` job uses `rsync --delete` to copy the checkout to `~/pov-db` on EC2. It does not
+   copy `.git`, `.env`, `data`, or cache folders.
+3. The `Deploy` job runs `scripts/deploy_prod.sh` in `~/pov-db`.
 
-Before the first deploy, create `$EC2_APP_DIR/shared/.env` on EC2 with the production RDS URL,
-Redis URL, live provider settings, and app settings. For Kite-first live data, include:
+`scripts/deploy_prod.sh` rebuilds the containers and flushes Redis. To push a commit that changes
+only documentation without a production deploy, put `[skip ci]` in the commit message.
+
+Before the first deploy, create `~/pov-db/.env` on EC2 with the production RDS URL, Redis URL,
+live provider settings, and app settings. The `rsync` step keeps this file. For Kite-first live
+data, include:
 
 ```text
 LIVE_QUOTE_PROVIDER=kite
@@ -170,8 +177,7 @@ KITE_TOKEN_REFRESH_TIME_IST=06:05
 open `GET /api/admin/kite/login-url`, complete Kite login, then call
 `POST /api/admin/kite/session` with JSON body `{"request_token": "..."}`. The backend stores the resulting daily token in
 Redis and `broker_access_tokens`. Kite does not support unattended retail access-token regeneration
-from API key/secret alone. The workflow uploads each commit into a release directory, updates the
-`current` symlink, copies the shared `.env`, and runs `scripts/deploy_prod.sh`.
+from API key/secret alone.
 
 ## Daily Operations
 
